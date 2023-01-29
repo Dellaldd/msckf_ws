@@ -1,0 +1,5 @@
+Linked: (/home/ldd/cvbridge_py/devel/.private/image_geometry/share/image_geometry/cmake/image_geometryConfig-version.cmake, /home/ldd/cvbridge_py/devel/share/image_geometry/cmake/image_geometryConfig-version.cmake)
+Linked: (/home/ldd/cvbridge_py/devel/.private/image_geometry/share/image_geometry/cmake/image_geometryConfig.cmake, /home/ldd/cvbridge_py/devel/share/image_geometry/cmake/image_geometryConfig.cmake)
+Linked: (/home/ldd/cvbridge_py/devel/.private/image_geometry/lib/libimage_geometry.so, /home/ldd/cvbridge_py/devel/lib/libimage_geometry.so)
+Linked: (/home/ldd/cvbridge_py/devel/.private/image_geometry/lib/python3/dist-packages/image_geometry/__init__.py, /home/ldd/cvbridge_py/devel/lib/python3/dist-packages/image_geometry/__init__.py)
+Linked: (/home/ldd/cvbridge_py/devel/.private/image_geometry/lib/pkgconfig/image_geometry.pc, /home/ldd/cvbridge_py/devel/lib/pkgconfig/image_geometry.pc)

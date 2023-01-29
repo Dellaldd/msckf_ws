@@ -1,0 +1,15 @@
+[36mInstall the project...[0m
+-- Install configuration: ""
+-- Installing: /home/ldd/cvbridge_py/install/_setup_util.py
+-- Installing: /home/ldd/cvbridge_py/install/env.sh
+-- Installing: /home/ldd/cvbridge_py/install/setup.bash
+-- Installing: /home/ldd/cvbridge_py/install/local_setup.bash
+-- Installing: /home/ldd/cvbridge_py/install/setup.sh
+-- Installing: /home/ldd/cvbridge_py/install/local_setup.sh
+-- Installing: /home/ldd/cvbridge_py/install/setup.zsh
+-- Installing: /home/ldd/cvbridge_py/install/local_setup.zsh
+-- Installing: /home/ldd/cvbridge_py/install/.rosinstall
+-- Installing: /home/ldd/cvbridge_py/install/lib/pkgconfig/opencv_tests.pc
+-- Installing: /home/ldd/cvbridge_py/install/share/opencv_tests/cmake/opencv_testsConfig.cmake
+-- Installing: /home/ldd/cvbridge_py/install/share/opencv_tests/cmake/opencv_testsConfig-version.cmake
+-- Installing: /home/ldd/cvbridge_py/install/share/opencv_tests/package.xml

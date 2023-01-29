@@ -1,0 +1,1 @@
+/home/ldd/cvbridge_py/devel/.private/cv_bridge/lib/pkgconfig/cv_bridge.pc

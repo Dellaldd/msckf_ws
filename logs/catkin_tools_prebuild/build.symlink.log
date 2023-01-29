@@ -1,0 +1,12 @@
+Symlinking /home/ldd/cvbridge_py/devel/./cmake.lock
+Symlinking /home/ldd/cvbridge_py/devel/./local_setup.sh
+Symlinking /home/ldd/cvbridge_py/devel/./setup.sh
+Symlinking /home/ldd/cvbridge_py/devel/./local_setup.bash
+Symlinking /home/ldd/cvbridge_py/devel/./setup.bash
+Symlinking /home/ldd/cvbridge_py/devel/./setup.zsh
+Symlinking /home/ldd/cvbridge_py/devel/./local_setup.zsh
+Symlinking /home/ldd/cvbridge_py/devel/./_setup_util.py
+Symlinking /home/ldd/cvbridge_py/devel/./env.sh
+Symlinking /home/ldd/cvbridge_py/devel/share/catkin_tools_prebuild/cmake/catkin_tools_prebuildConfig.cmake
+Symlinking /home/ldd/cvbridge_py/devel/share/catkin_tools_prebuild/cmake/catkin_tools_prebuildConfig-version.cmake
+Symlinking /home/ldd/cvbridge_py/devel/lib/pkgconfig/catkin_tools_prebuild.pc

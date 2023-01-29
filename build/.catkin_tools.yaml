@@ -1,0 +1,6 @@
+devel_space: /home/ldd/cvbridge_py/devel
+install: true
+install_space: /home/ldd/cvbridge_py/install
+profile: default
+source_space: /home/ldd/cvbridge_py/src
+workspace: /home/ldd/cvbridge_py

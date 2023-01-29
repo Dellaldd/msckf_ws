@@ -1,0 +1,13 @@
+/home/ldd/cvbridge_py/install/_setup_util.py
+/home/ldd/cvbridge_py/install/env.sh
+/home/ldd/cvbridge_py/install/setup.bash
+/home/ldd/cvbridge_py/install/local_setup.bash
+/home/ldd/cvbridge_py/install/setup.sh
+/home/ldd/cvbridge_py/install/local_setup.sh
+/home/ldd/cvbridge_py/install/setup.zsh
+/home/ldd/cvbridge_py/install/local_setup.zsh
+/home/ldd/cvbridge_py/install/.rosinstall
+/home/ldd/cvbridge_py/install/lib/pkgconfig/catkin_tools_prebuild.pc
+/home/ldd/cvbridge_py/install/share/catkin_tools_prebuild/cmake/catkin_tools_prebuildConfig.cmake
+/home/ldd/cvbridge_py/install/share/catkin_tools_prebuild/cmake/catkin_tools_prebuildConfig-version.cmake
+/home/ldd/cvbridge_py/install/share/catkin_tools_prebuild/package.xml
