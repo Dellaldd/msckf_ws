@@ -1,5 +1,5 @@
 import numpy as np
-from pyquaternion import Quaternion
+# from pyquaternion import Quaternion
 from scipy.spatial.transform import Rotation as R
 # import quaternion
 
@@ -65,10 +65,102 @@ from scipy.spatial.transform import Rotation as R
 # b = np.array([-1,0,0])
 # print(quaternion_from_two_vectors(a,b))
 
-def quaternion2euler(quaternion):
-    r = R.from_quat(quaternion)
-    euler = r.as_euler('xyz', degrees=True)
-    return euler
+# def quaternion2euler(quaternion):
+#     r = R.from_quat(quaternion)
+#     euler = r.as_euler('xyz', degrees=True)
+#     return euler
 
-a = Quaternion(1,0,0,0)
-print(quaternion2euler(a.elements))
+# a = Quaternion(1,0,0,0)
+# print(quaternion2euler(a.elements))
+# from scipy.linalg import expm
+# a = np.array([1,0])
+# print(np.diag(a))
+# # print(np.exp(a))
+import cv2
+# extrinsic = np.array([[0.05812254, 0.9969995, 0.05112498, 0.043909],
+#                     [-0.02821786, -0.04955038, 0.99837293, -0.026862],
+#                     [0.99791058, -0.05947061, 0.02525319, -0.006717],
+#                     [0., 0., 0., 1.]])
+
+# rvec, _ = cv2.Rodrigues(extrinsic[:3, :3])
+# print(rvec)
+
+# a = np.mat([[1],[2],[3]],dtype=float)
+# rot_mat,_ = cv2.Rodrigues(a)
+# print(rot_mat)
+
+# a= [[1,2],[2,3]]
+# b = np.sum(np.array(a)**2,axis=1)
+
+# print(np.argwhere(b > 1))
+
+# intrinsics = np.array([457.587, 456.134, 379.999, 255.238])
+# K = np.eye(3)
+# K[0,0] = intrinsics[0]
+# K[1,1] = intrinsics[1]
+# K[0,2] = intrinsics[2]
+# K[1,2] = intrinsics[3]
+
+# dist_coeffs = [-0.28368365,  0.07451284, -0.00010473, -3.55590700e-05]
+# dist_coeffs = np.float32(dist_coeffs)
+
+# feature = [[1,2],[2,3]]
+# feature = np.array(feature,dtype = float)
+# print(type(feature))
+# print(type(dist_coeffs))
+# # feature = np.ndarray[int, np.dtype[np.generic]]
+# feature = cv2.undistortPoints(feature,K,dist_coeffs)
+# feature = np.squeeze(feature).tolist()
+# print(type(feature))
+# print(feature)
+
+# from queue import Queue
+# x = Queue(5)
+# x.put(1)
+# x.put(2)
+# x.put(2)
+# x.put(2)
+# x.put(2)
+# print(x.qsize())
+# b = x.get()
+
+# print(b)
+
+# i = [1,2,3,4]
+# a = np.where(np.array([1,2,3,4])==5)[0]
+# i.pop(1)
+# print(i)
+# print(i.index(6))
+
+# print(np.iinfo(np.int8).min)
+# a = np.array([[1,2,3,4],[5,6,7,8]])
+# b = np.repeat(a,[2,1],axis = 1)
+# print(a[:,-2:])
+# a = np.count_nonzero([[0,0,7,0,0],[3,0,0,2,19],[0,0,0,0,0]], axis=1)
+# print(a)
+# print(np.count_nonzero(a))
+# a = Quaternion(1,1,0,0)
+# print(a)
+# print(type(a.normalised))
+
+# from module_msckf import Camera
+# a = Camera()
+# b = Camera()
+# c = Camera()
+# x = [a,b,c]
+# y = np.array(x)
+# print(y)
+# index = [0,1]
+# z = np.delete(y,index).tolist()
+# print(type(z))
+
+# a = np.ones((2,3))
+# b = np.ones((3,2))
+# c = np.ones((2,2))
+# print(np.mat(a)*np.mat(b)*np.mat(c))
+
+a = np.array([[ 89.62155332,  -5.96454132, -23.60572378],
+[ -5.96454132,   0.39695533,   1.57102069],
+ [-23.60572378,   1.57102069,   6.21759136]])
+print(np.linalg.inv(a))
+
