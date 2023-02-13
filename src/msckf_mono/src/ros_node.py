@@ -146,9 +146,10 @@ class Vio():
                 self.msckf.propagate(imu)
                 gyro_measurement = np.dot(self.R_cam_imu.transpose(), (imu.omega-self.init_imu_state.b_g))
                 self.trackhandle.add_gyro_reading(gyro_measurement)
-            # self.trackhandle.set_current_image(img, self.cur_img_time)
-            # cur_features, cur_ids = self.trackhandle.tracked_features()
-            # new_features, new_ids = self.trackhandle.get_new_features()
+
+            self.trackhandle.set_current_image(img, self.cur_img_time)
+            cur_features, cur_ids = self.trackhandle.tracked_features()
+            new_features, new_ids = self.trackhandle.get_new_features()
             # self.msckf.augmentState(self.state_k,self.cur_img_time)
             # self.msckf.update(cur_features, cur_ids)
             # self.msckf.addFeatures(new_features,new_ids)
