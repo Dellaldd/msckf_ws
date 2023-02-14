@@ -21,7 +21,7 @@ class Msckf():
         self.F = np.zeros((15,15))
         self.G = np.zeros((15,12))
         self.Phi = np.zeros((15,15))
-        self.imu_cam_covar = np.zeros((15,15))# (15,dynamic)
+        self.imu_cam_covar = np.zeros((15,6))# (15,dynamic)
         self.noise_params = NoiseParams()
         self.camera = Camera()
         self.msckf_params = MSCKFParams()
@@ -82,12 +82,12 @@ class Msckf():
 
         self.num_feature_tracks_residualized = 0
         self.imu_state = init_imu_state
-        self.pos_init_ = self.imu_state.p_I_G
+        self.pos_init = self.imu_state.p_I_G
         self.imu_state.p_I_G_null = self.imu_state.p_I_G
         self.imu_state.v_I_G_null = self.imu_state.v_I_G
         self.imu_state.q_IG_null = self.imu_state.q_IG
-        self.imu_covar_ = self.noise_params.initial_imu_covar
-        self.last_feature_id_ = 0
+        self.imu_covar = self.noise_params.initial_imu_covar
+        self.last_feature_id = 0
         
         # // Initialize the chi squared test table with confidence
         # // level 0.95.
@@ -143,7 +143,7 @@ class Msckf():
         self.imu_state.p_I_G_null = self.imu_state.p_I_G
 
         self.noise_params.initial_imu_covar = (imu_covar_prop + imu_covar_prop.T) / 2.0
-        self.imu_cam_covar = np.mat(self.Phi) * np.mat(self.noise_params.initial_imu_covar) # problem
+        self.imu_cam_covar = np.mat(self.Phi) * np.mat(self.imu_cam_covar) # problem
         print("finish one propagate")
 
     def propogateImuStateRK(self, imu_state_k, measurement_k):
@@ -193,36 +193,36 @@ class Msckf():
         self.G[9:12,9:12] = np.identity(3)
     
     def augmentState(self,state_id, time):
-        self.map = np.zeros((3,))
+        self.map = np.zeros((3,1))
         q_CG = self.camera.q_CI * self.imu_state.q_IG
         q_CG = q_CG.normalised
         camstate = camState()
         camstate.last_correlated_id = -1
         camstate.q_CG = q_CG
 
-        camstate.p_C_G =self.imu_state.p_I_G + self.imu_state.q_IG.inverse * self.camera.p_C_I
+        camstate.p_C_G =self.imu_state.p_I_G + np.dot(self.imu_state.q_IG.inverse.rotation_matrix,self.camera.p_C_I) 
 
         camstate.time = time
         camstate.state_id = state_id
 
         n = len(self.cam_states)
-        if len(n):
+        if n:
             self.P = np.zeros((15+self.cam_covar.shape[1],15+self.cam_covar.shape[1]))
             self.P[:15,:15] = self.imu_covar
             self.P[:15,15:15+self.cam_covar.shape[1]] = self.imu_cam_covar
             self.P[15:15+self.cam_covar.shape[1],:15] = self.imu_cam_covar.T
             self.P[15:15+self.cam_covar.shape[1],15:15+self.cam_covar.shape[1]] = self.cam_covar
         else:
-            P = self.imu_covar
+            self.P = self.imu_covar
         J = np.zeros((6,15+6*n))
         J[:3,:3] = self.camera.q_CI.rotation_matrix
-        J[3:6,:3] = vectorToSkewSymmetric(self.imu_state.q_IG.inverse*self.camera.p_C_I)
+        J[3:6,:3] = vectorToSkewSymmetric(np.dot(self.imu_state.q_IG.inverse.rotation_matrix,self.camera.p_C_I))
         J[3:6,12:15] = np.identity(3)
 
         tempMat = np.identity(15 + 6*n)
-        tempMat = np.vstack(tempMat,J)
+        tempMat = np.vstack((tempMat,J))
 
-        P_aug = np.dot(np.dot(tempMat, self.P), tempMat.transpose())
+        P_aug = np.dot(np.dot(tempMat, self.P), tempMat.transpose()) # Pk_k augment
         P_aug_sym = (P_aug + P_aug.transpose()) / 2.0
         P_aug = P_aug_sym
 
@@ -232,6 +232,7 @@ class Msckf():
         self.cam_covar = P_aug[15:,15:]
         self.imu_cam_covar = P_aug[:15,15:]
 
+        print("finish one augment!")
     def removeTrackedFeature(self,featureID):
         camStateIndices = []
         featCamStates = []
@@ -550,11 +551,10 @@ class Msckf():
                 print(P_corrected.shape) 
                 print(self.cam_covar.shape)
 
-        #   // TODO : Verify need for eig check on P_corrected here (doesn't seem too
-        #   // important for now)
+        #   TODO : Verify need for eig check on P_corrected here (doesn't seem tooimportant for now)
             self.imu_covar = P_corrected[:15,:15]
 
-        #   // TODO: Check here
+        #   TODO: Check here
             self.cam_covar = P_corrected[15:, 15:]
             self.imu_cam_covar = P_corrected[:15,15:]
             
@@ -699,25 +699,3 @@ class Msckf():
 
             prunedImuCamCovar = self.imu_cam_covar[:,:n]
             self.imu_cam_covar = prunedImuCamCovar
-
-            
-
-
-                
-
-            
-
-        
-
-
-
-
-
-        
-
-
-
-
-
-
-

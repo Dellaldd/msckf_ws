@@ -1,5 +1,5 @@
 import numpy as np
-# from pyquaternion import Quaternion
+from pyquaternion import Quaternion
 from scipy.spatial.transform import Rotation as R
 # import quaternion
 
@@ -159,12 +159,9 @@ import cv2
 # c = np.ones((2,2))
 # print(np.mat(a)*np.mat(b)*np.mat(c))
 
-a = [ 0,1]
-
-b = np.array([[ 1,  2],
-[ 4,   5],
-[7,   8]])
-c = np.delete(b,a,axis=0)
+a = Quaternion(1,0,0,0)
+b = np.array([[2],[0],[0]])
+c = np.dot(a.inverse.rotation_matrix,b)
 print(c)
 
 

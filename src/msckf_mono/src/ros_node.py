@@ -150,7 +150,7 @@ class Vio():
             self.trackhandle.set_current_image(img, self.cur_img_time)
             cur_features, cur_ids = self.trackhandle.tracked_features()
             new_features, new_ids = self.trackhandle.get_new_features()
-            # self.msckf.augmentState(self.state_k,self.cur_img_time)
+            self.msckf.augmentState(self.state_k,self.cur_img_time)
             # self.msckf.update(cur_features, cur_ids)
             # self.msckf.addFeatures(new_features,new_ids)
             # self.msckf.marginalize()
