@@ -2,6 +2,7 @@ from module_msckf import Imu_state,NoiseParams,Camera,MSCKFParams,camState,Featu
 import numpy as np
 from pyquaternion import Quaternion
 import math
+from scipy.stats import chi2
 
 def vectorToSkewSymmetric(v):
     M = np.array([[0,-v[2],v[1]],[v[2],0,-v[0]],[-v[1],v[0],0]])
@@ -25,7 +26,7 @@ class Msckf():
         self.noise_params = NoiseParams()
         self.camera = Camera()
         self.msckf_params = MSCKFParams()
-        self.map = np.zeros((3,))
+        self.map = []
         self.cam_states = []
         self.P = []
         self.cam_covar = []
@@ -89,13 +90,11 @@ class Msckf():
         self.imu_covar = self.noise_params.initial_imu_covar
         self.last_feature_id = 0
         
-        # // Initialize the chi squared test table with confidence
-        # // level 0.95.
-        # chi_squared_test_table.resize(99);
-        # for (int i = 1; i < 100; ++i) {
-        #   boost::math::chi_squared chi_squared_dist(i);
-        #   chi_squared_test_table[i-1] = boost::math::quantile(chi_squared_dist, 0.05);
-        # }
+        # Initialize the chi squared test table with confidence
+        # level 0.95
+        
+        for i in range(99):
+            self.chi_squared_test_table.append(chi2.ppf(q=0.05, df=i+1))
         
 
     def propagate(self,measurement):
@@ -144,7 +143,7 @@ class Msckf():
 
         self.noise_params.initial_imu_covar = (imu_covar_prop + imu_covar_prop.T) / 2.0
         self.imu_cam_covar = np.mat(self.Phi) * np.mat(self.imu_cam_covar) # problem
-        print("finish one propagate")
+        # print("finish one propagate")
 
     def propogateImuStateRK(self, imu_state_k, measurement_k):
         # Runge-Kutta
@@ -193,7 +192,7 @@ class Msckf():
         self.G[9:12,9:12] = np.identity(3)
     
     def augmentState(self,state_id, time):
-        self.map = np.zeros((3,1))
+        self.map = []
         q_CG = self.camera.q_CI * self.imu_state.q_IG
         q_CG = q_CG.normalised
         camstate = camState()
@@ -232,33 +231,43 @@ class Msckf():
         self.cam_covar = P_aug[15:,15:]
         self.imu_cam_covar = P_aug[:15,15:]
 
-        print("finish one augment!")
+        # print("finish one augment!")
+
     def removeTrackedFeature(self,featureID):
         camStateIndices = []
         featCamStates = []
         for c_i in range(len(self.cam_states)):
+            # if cam state includes this feature, add it in the featCamStates
             feature_iter = np.where(np.array(self.cam_states[c_i].tracked_feature_ids)==featureID)[0]
-            if feature_iter is not None:
-                self.cam_states[c_i].tracked_feature_ids.pop[feature_iter]
+            if feature_iter:
+                self.cam_states[c_i].tracked_feature_ids.pop(feature_iter)
                 camStateIndices.append(c_i)
                 featCamStates.append(self.cam_states[c_i])
         return featCamStates, camStateIndices
 
     def update(self,measurements,feature_ids):
+        # Updates the positions of tracked features at the current timestamp.
+
         self.feature_tracks_to_residualize = []
         self.tracks_to_remove = []
+        
         id_iter = 0
-        for feature_id in self.tracked_feature_ids:
-            input_feature_ids_iter = feature_ids.index(feature_id)
-            is_valid = input_feature_ids_iter != len(feature_ids)-1
-            track = FeatureTrack()
-            self.feature_tracks.append(track)
-            if(is_valid):
-                track.observations.append(measurements[input_feature_ids_iter])
-                self.cam_states[-1].tracked_feature_ids.append(feature_id)
-                track.cam_state_indices.append(self.cam_states.state_id)
+        # whether the new tracked feature in feature_ids is in the list of the tracked feature ids
+        for feature_id in self.tracked_feature_ids: 
+            #find the place of feature id
+            input_feature_ids_iter = np.where(np.array(feature_ids)==feature_id)[0].tolist()
             
-            if (not is_valid) or len(track.observations) >= self.msckf_params.max_track_length:
+            track = FeatureTrack()
+            track = self.feature_tracks[id_iter]
+            # self.feature_tracks.append(track)
+            if(input_feature_ids_iter):
+                track.observations.append(measurements[input_feature_ids_iter[0]])
+                # the tracked feature is added into the current cam state
+                self.cam_states[-1].tracked_feature_ids.append(feature_id)
+                track.cam_state_indices.append(self.cam_states[-1].state_id)
+            
+            # not tracked features or track is too long, need to be residualized
+            if (not input_feature_ids_iter) or len(track.observations) >= self.msckf_params.max_track_length:
                 track_to_residualize = FeatureTrackToResidualize()
                 track_to_residualize.cam_states,track_to_residualize.cam_state_indices=self.removeTrackedFeature(feature_id)
 
@@ -273,8 +282,21 @@ class Msckf():
                 self.tracks_to_remove.append(feature_id)
 
             id_iter += 1
+        
+        
+        # for feature_id in self.tracks_to_remove:
+        #     for track_iter in self.feature_tracks:
+        #         if track_iter.feature_id == feature_id:
 
+    # Adds newly detected features to the filter.
     def addFeatures(self,features,feature_ids):
+
+        # Assumes featureIDs match features
+        # Original code is a bit confusing here. Seems to allow for repeated feature
+        # IDs
+        # Will assume feature IDs are unique per feature per call
+        # TODO: revisit this assumption if necessary
+
         for i in range(len(features)):
             id = feature_ids[i]
             if not np.where(np.array(self.tracked_feature_ids == id))[0]:
@@ -289,21 +311,23 @@ class Msckf():
             else:
                 print("Error, added new feature that was already being tracked")
 
-    def generateInitialGuess(self,T_c1_c2, z1,z2):
-        m = np.dot(T_c1_c2[:3,:3],np.array([z1[0]],[z1[1]],1))
-        A = np.zeros((2,))
+    def generateInitialGuess(self,T_c1_c2, z1,z2): # problem
+        # Construct a least square problem to solve the depth
+        m = np.dot(T_c1_c2[:3,:3],np.array([[z1[0]],[z1[1]],[1]]))
+        A = np.zeros((2,1))
         A[0] = m[0] - z2[0] * m[2]
         A[1] = m[1] - z2[1] * m[2]
+
         b = np.zeros((2,))
         b[0] = z2[0] * T_c1_c2[2,3] - T_c1_c2[0,3]
         b[1] = z2[1] * T_c1_c2[2,3] - T_c1_c2[1,3]
 
-        depth = np.dot(np.dot(np.linalg.inv(np.dot(A.T,A)),A.T),b)
+        depth = np.dot(np.dot(np.linalg.inv(np.dot(A.T,A)),A.T),b) # Least Square
         p = np.zeros((3,))
         p[0] = z1[0] * depth
         p[1] = z1[1] * depth
         p[2] = depth
-        return depth
+        return p
 
     def cost(self, T_c0_ci,x, z):
         alpha = x[0]
@@ -314,7 +338,16 @@ class Msckf():
         e = np.linalg.norm(z_hat-z)  
         return e 
 
-
+#     /*
+#    * @brief jacobian Compute the Jacobian of the camera observation
+#    * @param T_c0_c1 A rigid body transformation takes
+#    *    a vector in c0 frame to ci frame.
+#    * @param x The current estimation.
+#    * @param z The actual measurement of the feature in ci frame.
+#    * @return J The computed Jacobian.
+#    * @return r The computed residual.
+#    * @return w Weight induced by huber kernel.
+#    */
     def jacobian(self,T_c0_ci,x, z):
         alpha = x[0]
         beta = x[1]
@@ -340,19 +373,30 @@ class Msckf():
         return J,r,w
 
     def initializePosition(self,cam_states,measurements):
+        # Organize camera poses and feature observations properly
         cam_poses = []
+        first_flag = False
+        T_c0_w = np.identity(4)
         for cam in cam_states:
+            # This camera pose will take a std::vector from this camera frame
+            # to the world frame.
             cam0_pose = cam.q_CG.rotation_matrix.T
-            cam0_pose = np.hstack(cam0_pose,cam.p_C_G)
-            cam0_pose = np.vstack(cam0_pose,np.array([0,0,0,1]))
-            cam_poses.append(cam0_pose)
-        T_c0_w = cam_poses[0]
-        for i in range(len(cam_poses)):
-            cam_poses[i] = np.dot(np.linalg.inv(cam_poses[i]),T_c0_w)
+            cam0_pose = np.hstack((cam0_pose,cam.p_C_G.reshape(3,1)))
+            cam0_pose = np.vstack((cam0_pose,np.array([0,0,0,1])))
+            # All camera poses should be modified such that it takes a
+            # std::vector from the first camera frame in the buffer to this
+            # camera frame.
+            if not first_flag:
+                T_c0_w = cam0_pose
+                cam_poses.append(cam0_pose)
+                first_flag = True
+            else:
+                cam_poses.append(np.dot(np.linalg.inv(cam0_pose),T_c0_w))
         
+        # Generate initial guess
         initial_position = self.generateInitialGuess(cam_poses[-1], measurements[0],
                              measurements[-1])
-        solution = initial_position/initial_position[2]
+        solution = np.array([initial_position[0]/initial_position[2],initial_position[1]/initial_position[2],1/initial_position[2]])
 
         initial_damping = 1e-3
         lambda0 = initial_damping
@@ -373,6 +417,7 @@ class Msckf():
         while outer_loop_cntr<outer_loop_max_iteration and delta_norm > estimation_precision:
             A = np.zeros((3,3))
             b = np.zeros((3,))
+
             for i in range(len(cam_poses)):
                 J,r,w = self.jacobian(cam_poses[i],solution,measurements[i])
 
@@ -383,6 +428,9 @@ class Msckf():
                     w_square = w * w
                     A += np.dot(w_square * J.T, J)
                     b += np.dot(w_square * J.T, r)
+            
+            inner_loop_cntr = 0
+            # Solve for the delta that can reduce the total cost
             while (inner_loop_cntr < inner_loop_max_iteration and  not is_cost_reduced):
                 damper = lambda0 * np.identity(3)
                 delta = np.linalg.solve(A + damper, b)
@@ -411,19 +459,23 @@ class Msckf():
                         lambda0 = 1e12
                 inner_loop_cntr += 1   
             outer_loop_cntr += 1
+
+
         final_position = np.array([solution[0]/solution[2],solution[1]/solution[2],1/solution[2]])
         is_valid_solution = True
+
         for pose in cam_poses:
             position = np.dot(pose[:3,:3],final_position) + pose[:3,3]
             if position[2] <= 0:
                 is_valid_solution = False
                 break
+
         normalized_cost = total_cost / (2 * len(cam_poses) * len(cam_poses))
         cov_diag = np.diag(self.imu_covar)
         
         if (normalized_cost > self.msckf_params.max_gn_cost_norm):
             is_valid_solution = False
-        p_f_G = T_c0_w[:3,:3] * final_position + T_c0_w[:3,3]
+        p_f_G = np.dot(T_c0_w[:3,:3], final_position) + T_c0_w[:3,3]
         return is_valid_solution,p_f_G
 
     def calcResidual(self,p_f_G,camstates,observations):
@@ -431,7 +483,7 @@ class Msckf():
         r_j = []
         for state_i in camstates:
             p_f_C = np.dot(state_i.q_CG.rotation_matrix, (p_f_G - state_i.p_C_G))
-            zhat_i_j = p_f_C[:2] / p_f_C[2]
+            zhat_i_j = [p_f_C[0] / p_f_C[2],p_f_C[1] / p_f_C[2]]
             r_j.append(observations[iter]-zhat_i_j)# list[i] = (x,y)
             iter += 1
         return r_j
@@ -441,7 +493,8 @@ class Msckf():
         H_x_j = np.zeros((2 * len(camstateindices), 15 + 6 * self.cam_states))
         for c_i in range(len(camstateindices)):
             index = camstateindices[c_i]
-            p_f_C = self.cam_states[index].q_CG.rotation_matrix, (p_f_G - self.cam_states[index].p_C_G)
+            # feature to cam
+            p_f_C = np.dot(self.cam_states[index].q_CG.rotation_matrix, (p_f_G - self.cam_states[index].p_C_G))
 
             X = p_f_C[0]
             Y = p_f_C[1]
@@ -449,7 +502,7 @@ class Msckf():
 
             J_i = np.array([[1, 0, -X / Z], [0, 1, -Y / Z]]) #2x3
             J_i *= 1 / Z
-            
+            # Enforce observability constraint, see propagation for citation
             A = np.hstack(np.dot(J_i, vectorToSkewSymmetric(p_f_C)),
             np.dot(-J_i, self.cam_states[index].q_CG.rotation_matrix))
             tmp = p_f_G - self.cam_states[index].p_C_G
@@ -472,8 +525,8 @@ class Msckf():
     def buildUpdateQuat(self,deltaTheta):
         deltaq = 0.5 * deltaTheta
         updateQuat = Quaternion(1,0,0,0)
-        # // Replaced with squaredNorm() ***1x1 result so using sum instead of creating
-        # // another variable and then referencing the 0th index value***
+        # Replaced with squaredNorm() ***1x1 result so using sum instead of creating
+        # another variable and then referencing the 0th index value***
         checkSum = np.linalg.norm(deltaq)
         if (checkSum > 1) :
           updateQuat.w = 1
@@ -491,6 +544,7 @@ class Msckf():
         if r_o.shape[0] != 0:
             P = np.zeros((15 + self.cam_covar.shape[0], 15 + self.cam_covar.shape[1]))
             P[:15, :15] = self.imu_covar
+
             if (self.cam_covar.shape[0] != 0):
                 P[:15, 15:self.imu_cam_covar.shape[1]] = self.imu_cam_covar
                 P[15:15+self.imu_cam_covar.shape[1], :15] = self.imu_cam_covar.T
@@ -522,7 +576,8 @@ class Msckf():
             # State Correction
             deltaX = np.dot(K, r_n)
 
-            q_IG_up = np.dot(self.buildUpdateQuat(deltaX[:3]), self.imu_state.q_IG)
+            # Update IMU state (from updateState matlab function defined in MSCKF.m)
+            q_IG_up = self.buildUpdateQuat(deltaX[:3]) * self.imu_state.q_IG
 
             self.imu_state.q_IG = q_IG_up
 
@@ -531,25 +586,25 @@ class Msckf():
             self.imu_state.v_I_G += deltaX[6:9]
             self.imu_state.p_I_G += deltaX[12:15]
 
-            # // Update Camera<_S> states
+            # Update Camera<_S> states
             for c_i in range(len(self.cam_states)):
                 q_CG_up = np.dot(self.buildUpdateQuat(deltaX[15 + 6 * c_i: 15 + 6 * c_i+3]),self.cam_states[c_i].q_CG)
                 self.cam_states[c_i].q_CG = q_CG_up.normalized
                 self.cam_states[c_i].p_C_G += deltaX[18 + 6 * c_i:18 + 6 * c_i+3]
 
-            # // Covariance correction
+            # Covariance correction
             tempMat = np.identity(15 + 6 * len(self.cam_states))-np.dot(K, T_H)
 
           
             P_corrected = np.dot(np.dot(tempMat, P), tempMat.T) + np.dot(np.dot(K, R_n), K.T)
-            # // Enforce symmetry
+            # Enforce symmetry
             P_corrected_transpose = P_corrected.T
             P_corrected += P_corrected_transpose
             P_corrected /= 2
 
             if(P_corrected.shape[0]-15!=self.cam_covar.shape[0]):
-                print(P_corrected.shape) 
-                print(self.cam_covar.shape)
+                print("P.shape:",P_corrected.shape) 
+                print("cam_covar.shape",self.cam_covar.shape)
 
         #   TODO : Verify need for eig check on P_corrected here (doesn't seem tooimportant for now)
             self.imu_covar = P_corrected[:15,:15]
@@ -557,48 +612,116 @@ class Msckf():
         #   TODO: Check here
             self.cam_covar = P_corrected[15:, 15:]
             self.imu_cam_covar = P_corrected[:15,15:]
-            
+    
 
+    def checkMotion(self,first_observation,cam_states):
+         
+        if len(cam_states) < 2:
+            return False
+        
+        first_cam = cam_states[0]
+        first_cam_pose = first_cam.q_CG.rotation_matrix.T
+        first_cam_pose = np.hstack((first_cam_pose,first_cam.p_C_G))
+
+        # Get the direction of the feature when it is first observed.
+        # This direction is represented in the world frame.
+
+        first_observation = np.array(first_observation)
+        n = first_observation.shape[0]
+        feature_direction = np.hstack((first_observation,np.ones((n,1))))
+
+        feature_direction_norm = np.linalg.norm(feature_direction,axis=1)
+        feature_direction = feature_direction/feature_direction_norm.reshape(n,1)
+        feature_direction = np.dot(first_cam_pose[:3,:3],feature_direction.T)
+
+        max_ortho_translation = 0
+
+        for second_cam_iter in cam_states:
+            second_cam_pose = second_cam_iter.q_CG.rotation_matrix.T
+            second_cam_pose = np.hstack((second_cam_pose,second_cam_iter.p_C_G))
+
+            # Compute the translation between the first frame
+            # and the last frame. We assume the first frame and
+            # the last frame will provide the largest motion to
+            # speed up the checking process.
+
+            translation = second_cam_pose[:3,3] - first_cam_pose[:3,3] #3*1
+            parallel_translation = np.dot(translation.transpose(), feature_direction) # 1*n
+
+            orthogonal_translation = translation - np.dot(parallel_translation, feature_direction).T # 3*n problem
+
+            if (np.linalg.norm(orthogonal_translation) > max_ortho_translation):
+                max_ortho_translation = np.linalg.norm(orthogonal_translation)
+          
+        if (max_ortho_translation > self.msckf_params.translation_threshold):
+          return True
+        else:
+          return False
+
+    def gatingTest(self,H, r, dof):
+        P = np.zeros((15+self.cam_covar.shape[0],15+self.cam_covar.shape[1]))
+        P[:15,:15] = self.imu_covar
+        if self.cam_covar.shape[0] != 0:
+            P[:15,15:self.cam_covar.shape[1]] = self.imu_cam_covar
+            P[15:self.imu_cam_covar.shape[1],:15] = self.imu_cam_covar.T
+            P[15:self.cam_covar.shape[0],15:self.cam_covar.shape[1]] = self.cam_covar
+
+        P1 = np.dot(np.dot(H,P), H.T)
+        P2 = self.noise_params.u_var_prime * np.identity(H.shape[0])
+
+        gamma = np.dot(r.T, np.linalg.solve((P1 + P2),r))
+
+        if gamma < self.chi_squared_test_table[int(dof+1)]:
+            return True
+        else:
+            return False
+
+    # Finds feature tracks that have been lost, removes them from the filter, and uses them
+    # to update the camera states that observed them.
     def marginalize(self):
         if len(self.feature_tracks_to_residualize):
             num_passed = 0
             num_rejected = 0
             num_ransac = 0
             max_length = -1
-            min_length = 99
+            min_length = 199
             max_norm = -1
-            min_norm = 99
-            total_nObs = 0
+            min_norm = 199
             total_nObs = 0
             valid_tracks = []
             p_f_G_vec = []
+
             for track in self.feature_tracks_to_residualize:
+                # judge whether exists motion
+                # if not, add one valid track
                 if (self.num_feature_tracks_residualized > 3) and not (self.checkMotion(track.observations, track.cam_states)):
                     num_rejected +=1
                     valid_tracks.append(0)
                     continue
+
+                # Estimate feature 3D location with intersection, LM
                 isvalid,p_f_G = self.initializePosition(track.cam_states, track.observations)
                 if isvalid:
                     track.initialized = True
                     track.p_f_G = p_f_G
-                    self.map.push_back(p_f_G)
-            p_f_G_vec.append(p_f_G)
-            nObs = len(track.observations)
+                    self.map.append(p_f_G)
+                p_f_G_vec.append(p_f_G)
+                nObs = len(track.observations)
 
-            p_f_C1 = np.dot(track.cam_states[0].q_CG.rotation_matrix,(p_f_G - track.cam_states[0].p_C_G))
+                p_f_C1 = np.dot(track.cam_states[0].q_CG.rotation_matrix,(p_f_G - track.cam_states[0].p_C_G))
 
-            if not isvalid:
-                num_rejected += 1
-                valid_tracks.append(0)
-            else:
-                num_passed += 1
-                valid_tracks.append(1)
-                total_nObs += nObs
-                if(nObs>max_length):
-                    max_length = nObs
-                if nObs < min_length:
-                    min_length = nObs
-                self.num_feature_tracks_residualized += 1
+                if not isvalid:
+                    num_rejected += 1
+                    valid_tracks.append(0)
+                else:
+                    num_passed += 1
+                    valid_tracks.append(1)
+                    total_nObs += nObs
+                    if(nObs>max_length):
+                        max_length = nObs
+                    if nObs < min_length:
+                        min_length = nObs
+                    self.num_feature_tracks_residualized += 1
             
             if not num_passed:
                 return 
@@ -619,16 +742,18 @@ class Msckf():
                 
                 nObs = len(track.observations)
                 R_j = np.tile(rep,(nObs,1))
-                R_j = np.diag(R_j)
+                R_j = np.diag(R_j)# noise
 
                 H_o_j, A_j = self.calcMeasJacobian(p_f_G, track.cam_state_indices)
-                r_o_j = np.dot(A_j.T, r_j)
+
+                # Stacked residuals and friends
+                r_o_j = np.dot(A_j.T, np.array(r_j))
                 R_o_j = np.dot(np.dot(A_j.T, R_j), A_j)
 
                 if (self.gatingTest(H_o_j, r_o_j, len(track.cam_states) - 1)):
                     r_o[stack_counter, stack_counter+len(r_o_j.size)] = r_o_j
                     H_o[stack_counter:stack_counter+H_o_j.shape[0], :H_o_j.shape[1]] = H_o_j
-                    R_o[stack_counter:stack_counter+ R_o_j.shape[0],stack_counter:stack_counter+R_o_j.shape[1]]=R_o_j
+                    R_o[stack_counter:stack_counter+ R_o_j.shape[0],stack_counter:stack_counter+R_o_j.shape[1]] = R_o_j
                 
                     stack_counter += H_o_j.shape[0]
 
@@ -645,7 +770,7 @@ class Msckf():
             return
         deleteIdx = []
         num_states = len(self.cam_states)
-
+        # Find all cam_states_ with no tracked landmarks and prune them
         num_deleted = 0
         camstate_pos = 0
         num_cam_states = len(self.cam_states)
@@ -666,7 +791,7 @@ class Msckf():
           self.pruned_states.append(self.cam_states[i])
           num_deleted += 1
         
-        self.cam_states = np.delete(self.cam_states,index).tolist()
+        self.cam_states = np.delete(np.array(self.cam_states),index).tolist()
         
         if (len(deleteIdx) != 0):
             n_remove = 0

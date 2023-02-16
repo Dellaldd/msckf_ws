@@ -159,10 +159,29 @@ import cv2
 # c = np.ones((2,2))
 # print(np.mat(a)*np.mat(b)*np.mat(c))
 
-a = Quaternion(1,0,0,0)
-b = np.array([[2],[0],[0]])
-c = np.dot(a.inverse.rotation_matrix,b)
-print(c)
+# from module_msckf import FeatureTrack
+# f1 = FeatureTrack()
+# f2 = FeatureTrack()
+# f3 = FeatureTrack()
+# feature_tracks = [f1,f2,f3]
+# f = feature_tracks[0]
+# f.cam_state_indices.append(1)
+# print(feature_tracks[0].cam_state_indices)
+
+# from scipy.stats import chi2
+# print(chi2.pdf(1))
+# from numpy import random
+# a = random.chisquare(df=1, size=100)
+# print(np.percentile(a,5))
+
+# from scipy.stats import chi2
+# # boost::math::quantile(norm, 0.5) <0.5 
+# a=chi2.ppf(q=0.05, df=3) 
+# print(a)
+# cam_states = [1,12,3,4,5,6]
+# print(cam_states.count(0))
+
+
 
 
 

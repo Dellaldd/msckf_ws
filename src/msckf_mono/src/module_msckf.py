@@ -88,7 +88,7 @@ class CornerTracker():
         # n = points1.shape[0]
         # points1 = points1.reshape(n,1,2)
         points2 = np.array(points2,dtype = np.float32)
-        points2,status,err = cv2.calcOpticalFlowPyrLK(img_1,img_2,points1,None,**self.lk_params)
+        points2,status,err = cv2.calcOpticalFlowPyrLK(img_1,img_2,points1,points2,**self.lk_params)
 
         h = img_1.shape[0]
         w = img_1.shape[1]
@@ -117,7 +117,7 @@ class CornerDetector():
         self.n_cols=8
         self.grid_height = 0
         self.grid_width = 0
-        self.detection_threshold=-1
+        self.detection_threshold=40
         self.grid_n_rows = 0
         self.grid_n_cols = 0
 
@@ -138,23 +138,48 @@ class CornerDetector():
     def set_grid_position(self,f):
         self.occupancy_grid[int(self.sub2ind(f))] = 1
 
-    def shiTomasiScore(self,img,u,v):
+    def shiTomasiScore(self,img,v,u):
         halfbox_size = 15
+
+        dXX = 0.0
+        dYY = 0.0
+        dXY = 0.0
         box_size = 2*halfbox_size
         box_area = box_size*box_size
-        x_min = v-halfbox_size
-        x_max = v+halfbox_size
-        y_min = u-halfbox_size
-        y_max = u+halfbox_size
+        x_min = int(u-halfbox_size)
+        x_max = int(u+halfbox_size)
+        y_min = int(v-halfbox_size)
+        y_max = int(v+halfbox_size)
         if x_min <= 1 or x_max >= img.shape[1]-1 or y_min <= 1 or y_max >= img.shape[0]-1:
             return 0.0
-        # print(x_min,x_max,y_min,y_max)
-        dx = img[int(y_min):int(y_max),int(x_min+1):int(x_max+1)] - img[int(y_min):int(y_max),int(x_min-1):int(x_max-1)]
-        dy = img[int(y_min+1):int(y_max+1),int(x_min):int(x_max)] - img[int(y_min-1):int(y_max-1),int(x_min):int(x_max)]
-        dXX = np.sum(dx*dx)/(2*box_area)
-        dYY = np.sum(dy*dy)/(2*box_area)
-        dXY = np.sum(dx*dy)/(2*box_area)
-        return 0.5 * (dXX + dYY - math.sqrt( (dXX + dYY) * (dXX + dYY) - 4 * (dXX * dYY - dXY * dXY) ))
+        x1 = np.array(img[int(y_min):int(y_max),int(x_min+1):int(x_max+1)]).astype(int)
+        x2 = np.array(img[int(y_min):int(y_max),int(x_min-1):int(x_max-1)]).astype(int)
+        dx = x1 - x2
+        y1 = np.array(img[int(y_min+1):int(y_max+1),int(x_min):int(x_max)]).astype(int)
+        y2 = np.array(img[int(y_min-1):int(y_max-1),int(x_min):int(x_max)]).astype(int)
+        dy = y1 - y2
+        dXX = float(np.sum(dx*dx))/ (2.0 * box_area)
+        dYY = float(np.sum(dy*dy))/ (2.0 * box_area)
+        dXY = float(np.sum(dx*dy))/ (2.0 * box_area)
+        score = 0.5 * (dXX + dYY - math.sqrt( (dXX + dYY) * (dXX + dYY) - 4 * (dXX * dYY - dXY * dXY) ))
+        return score
+
+        # for y in range(y_min,y_max):
+        #     for x in range(x_min,x_max):
+        #         ptr_left = img[y,x-1]
+        #         ptr_right = img[y,x+1]
+        #         ptr_top = img[y-1,x]
+        #         ptr_bottom = img[y+1,x]
+        #         dx = int(ptr_right) - int(ptr_left)
+        #         dy = int(ptr_bottom) - int(ptr_top)
+        #         dXX += dx*dx
+        #         dYY += dy*dy
+        #         dXY += dx*dy
+        # dXX = dXX / (2.0 * box_area)
+        # dYY = dYY / (2.0 * box_area)
+        # dXY = dXY / (2.0 * box_area)
+        # score = 0.5 * (dXX + dYY - math.sqrt( (dXX + dYY) * (dXX + dYY) - 4 * (dXX * dYY - dXY * dXY) ))
+        # return score
 
     def detect_features(self,image):
         self.grid_height = (image.shape[0]/self.grid_n_rows)+1
@@ -196,6 +221,78 @@ class FeatureTrack():
         self.cam_state_indices = []
         self.initialized = False
         self.p_f_G = np.zeros((3,))
+
+class TrackVisualizer():
+    def __init__(self):
+        self.feature_tracks = {}
+        self.predicted_pts = []
+
+    def draw_tracks(self,image):
+        if image.any() and self.predicted_pts:
+            first = True
+            for id in self.feature_tracks:
+                color = (id/64%8*255/8, id/8%8*255/8, id%8*255/8)
+                predicted_pts = np.array(self.predicted_pts)
+                predicted_pts = predicted_pts[:,0]
+                predicted_pts.astype(int)
+                search = np.where(np.array(predicted_pts) == id)[0]
+                # print(type(search[0]))
+                if search:
+                    pt = (int(self.predicted_pts[search[0]][1]),int(self.predicted_pts[search[0]][2]))
+                    cv2.circle(image,pt,6,color,2)
+
+                track = self.feature_tracks[id]
+                n = len(track)
+                for i in range(n):
+                    it = (int(track[n-i-1][0]),int(track[n-i-1][1]))
+                    if first:
+                        first = False
+                        cv2.circle(image,it,4,color,2)
+                        prev = it
+                    else:
+                        cv2.line(image,prev,it,color,1)
+
+                return image
+        else:
+            return np.array([])
+
+    def add_predicted(self,features,feature_ids):
+        assert(len(feature_ids)==len(features))
+        n = len(features)
+        self.predicted_pts = np.hstack((np.array(feature_ids).reshape(n,1),np.array(features))).tolist()
+
+    def add_current_features(self,features,feature_ids):
+        assert(len(feature_ids)==len(features))
+        current_ids = []
+        for i in range(len(feature_ids)):
+            id = feature_ids[i]
+            current_ids.append(id)
+            if not self.feature_tracks.get(id):
+                self.feature_tracks[id] = [features[i]]
+            else:
+                self.feature_tracks[id].append(features[i])
+        
+        to_remove = []
+        for i in self.feature_tracks:
+            track = self.feature_tracks.get(i)
+            if current_ids.count(i) == 0:
+                to_remove.append(i)
+
+        for id in to_remove:
+            self.feature_tracks.pop(id)
+
+    def add_new_features(self,features,feature_ids):
+        assert(len(feature_ids)==len(features))
+        for i in range(len(feature_ids)):
+            id = feature_ids[i]
+            if not self.feature_tracks.get(id):
+                self.feature_tracks[id] = [features[i]]
+            else:
+                self.feature_tracks[id].append(features[i])
+
+            
+
+
 
     
    

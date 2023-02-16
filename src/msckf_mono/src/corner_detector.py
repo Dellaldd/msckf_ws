@@ -1,5 +1,5 @@
 import numpy as np
-from module_msckf import CornerDetector,CornerTracker
+from module_msckf import CornerDetector,CornerTracker,TrackVisualizer
 import cv2
 
 class TrackHandle():
@@ -19,11 +19,12 @@ class TrackHandle():
         self.cur_feature_ids = []
         self.new_feature_ids = []
 
-        self.prev_img = []   #
-        self.cur_img = []
+        self.prev_img = np.array([])
+        self.cur_img = np.array([])
 
         self.detector = CornerDetector()
         self.track = CornerTracker()
+        self.visualizer = TrackVisualizer()
 
         self.use_gyro = True
         self.ransac_threshold = 0
@@ -103,16 +104,17 @@ class TrackHandle():
             c = np.vstack((pt_buf1[:,2],pt_buf1[:,2]))
             pt_buf1 = np.divide(pt_buf1[:,:2], c.T)
             self.cur_features.extend(pt_buf1[:,:2].tolist())
-            print("finish predict one feature!")
+            print("predict features:", len(self.cur_features))
         else:
             self.cur_features.extend(self.prev_features)
 
     def undistortPoints(self,feature):
         feature = np.array(feature,dtype=np.float32)
+        n = feature.shape[0]
         if self.distortion_model == "radtan":       
             # feature = np.ndarray[int, np.dtype[np.generic]]
             feature = cv2.undistortPoints(feature,self.K,self.dist_coeffs,P=self.K)
-            feature = np.squeeze(feature).tolist()
+            feature = feature.reshape(n,2).tolist()
             return feature
 
     def tracked_features(self):
@@ -124,21 +126,15 @@ class TrackHandle():
 
         if prev_size:
             self.predict_features()
-            # visualizer_.add_predicted(cur_features_, cur_feature_ids_);
+            self.visualizer.add_predicted(self.cur_features, self.cur_feature_ids)
             self.prev_features, self.cur_features,self.prev_feature_ids, self.cur_feature_ids = self.track.track_features(self.prev_img, self.cur_img,
                             self.prev_features, self.cur_features,
                             self.prev_feature_ids, self.cur_feature_ids)
-                            
-            if self.prev_features:
-                prev_features = self.undistortPoints(self.prev_features) 
-            else:
-                prev_features = []
-
-            if self.cur_features:
-                cur_features  = self.undistortPoints(self.cur_features)  
-            else:
-                cur_features = []
-            print("finish track one feature!")  
+        self.visualizer.add_current_features(self.cur_features, self.cur_feature_ids)      
+        if self.cur_features:          
+            prev_features = self.undistortPoints(self.prev_features) 
+            cur_features  = self.undistortPoints(self.cur_features)  
+            print("track features:", len(cur_features))  
             return cur_features, self.cur_feature_ids
         else:
             return [],[]
@@ -151,10 +147,13 @@ class TrackHandle():
             for i in range(len(self.new_features)):
                 self.new_feature_ids.append(self.next_feature_id)
                 self.next_feature_id += 1    
-            print("finish get new feature!")    
-            return self.undistortPoints(self.new_features),self.new_feature_ids
-            
+            self.visualizer.add_new_features(self.new_features, self.new_feature_ids)
+            print("new features:",len(self.new_features))    
+            return self.undistortPoints(self.new_features),self.new_feature_ids    
         else:
             return [],[]
+
+    def get_track_image(self):
+        return self.visualizer.draw_tracks(self.prev_img)
             
         
