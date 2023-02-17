@@ -181,7 +181,41 @@ import cv2
 # cam_states = [1,12,3,4,5,6]
 # print(cam_states.count(0))
 
+import rospy
+from sensor_msgs.msg import *
+from cv_bridge import CvBridge
+# class getImage():
+#     def __init__(self):
+#         self.count = 0
+#         self.image_sub = rospy.Subscriber("/cam0/image_raw", Image,self.img_Cb)
+#         self.total = 0
 
+#     def img_Cb(self,msg):
+#         bridge = CvBridge()
+#         img = bridge.imgmsg_to_cv2(msg, "mono8")
+#         if self.total > 100:
+            
+#             if self.count%2 == 0 and self.count< 20:
+#                 path = "image/" + str(self.count/2) + ".png"
+#                 cv2.imwrite(path,img)
+#                 print(self.count)
+#             self.count += 1
+#         self.total += 1
+        
+# def main():
+#     print("start")
+#     rospy.init_node('get_image_node', anonymous=True)
+#     getimage = getImage()
+#     rospy.spin()
 
+# if __name__ == '__main__':
+#     try:
+#         main()
+#     except rospy.ROSInterruptException:
+#         pass
+
+index = [1,1,2,3,4,5,6]
+index = list(set(index))
+print(index)
 
 

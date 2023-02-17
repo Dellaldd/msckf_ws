@@ -55,18 +55,19 @@ class TrackHandle():
         rows = self.detector.get_n_rows()
         cols = self.detector.get_n_cols()
 
-        # delete previous features and ids? 
-        # oc_grid = np.zeros((rows*cols,))
-        # n = np.min(len(self.prev_features),len(self.prev_feature_ids))
-        # index = []
-        # for i in range(n):
-        #     ind = self.detector.sub2ind(self.prev_features[i])
-        #     if(oc_grid[ind]):
-        #         index.append(ind)
-        #     else:
-        #         oc_grid[ind] = 1
-        # self.prev_features = np.delete(self.prev_features, index).tolist()
-        # self.prev_feature_ids = np.delete(self.prev_feature_ids, index).tolist()
+        # delete repeat features in previous features and ids? 
+        oc_grid = np.zeros((rows*cols+rows,1))
+        n = min(len(self.prev_features),len(self.prev_feature_ids))
+        index = []
+        for i in range(n):
+            ind = self.detector.sub2ind(self.prev_features[i][0],self.prev_features[i][1])
+            if(oc_grid[int(ind)]):
+                index.append(int(ind))
+            else:
+                oc_grid[int(ind)] = 1
+        index = list(set(index))
+        self.prev_features = np.array(np.delete(np.array(self.prev_features), index,axis=0)).tolist()
+        self.prev_feature_ids = np.delete(np.array(self.prev_feature_ids), index).tolist()
 
         # set the current time
         self.cur_time = time
@@ -104,7 +105,7 @@ class TrackHandle():
             c = np.vstack((pt_buf1[:,2],pt_buf1[:,2]))
             pt_buf1 = np.divide(pt_buf1[:,:2], c.T)
             self.cur_features.extend(pt_buf1[:,:2].tolist())
-            print("predict features:", len(self.cur_features))
+            # print("predict features:", len(self.cur_features))
         else:
             self.cur_features.extend(self.prev_features)
 
@@ -113,7 +114,7 @@ class TrackHandle():
         n = feature.shape[0]
         if self.distortion_model == "radtan":       
             # feature = np.ndarray[int, np.dtype[np.generic]]
-            feature = cv2.undistortPoints(feature,self.K,self.dist_coeffs,P=self.K)
+            # feature = cv2.undistortPoints(feature,self.K,self.dist_coeffs,P=self.K)
             feature = feature.reshape(n,2).tolist()
             return feature
 
@@ -125,7 +126,7 @@ class TrackHandle():
         # also handles the transfer of ids
 
         if prev_size:
-            self.predict_features()
+            self.predict_features() # add predict features in current features
             self.visualizer.add_predicted(self.cur_features, self.cur_feature_ids)
             self.prev_features, self.cur_features,self.prev_feature_ids, self.cur_feature_ids = self.track.track_features(self.prev_img, self.cur_img,
                             self.prev_features, self.cur_features,
@@ -134,7 +135,7 @@ class TrackHandle():
         if self.cur_features:          
             prev_features = self.undistortPoints(self.prev_features) 
             cur_features  = self.undistortPoints(self.cur_features)  
-            print("track features:", len(cur_features))  
+            # print("track features:", len(cur_features))  
             return cur_features, self.cur_feature_ids
         else:
             return [],[]

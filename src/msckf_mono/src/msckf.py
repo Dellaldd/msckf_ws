@@ -239,7 +239,7 @@ class Msckf():
         for c_i in range(len(self.cam_states)):
             # if cam state includes this feature, add it in the featCamStates
             feature_iter = np.where(np.array(self.cam_states[c_i].tracked_feature_ids)==featureID)[0]
-            if feature_iter:
+            if feature_iter.shape[0]:
                 self.cam_states[c_i].tracked_feature_ids.pop(feature_iter)
                 camStateIndices.append(c_i)
                 featCamStates.append(self.cam_states[c_i])
@@ -299,7 +299,7 @@ class Msckf():
 
         for i in range(len(features)):
             id = feature_ids[i]
-            if not np.where(np.array(self.tracked_feature_ids == id))[0]:
+            if not np.where(np.array(self.tracked_feature_ids == id))[0].shape[0]:
                 track = FeatureTrack()
                 track.feature_id = feature_ids[i]
                 track.observations.append(features[i])
@@ -799,7 +799,7 @@ class Msckf():
             to_keep = np.zeros((num_states, 1))
             for IDx in range(num_states):
                 find_index = np.where(deleteIdx==IDx)[0]
-                if find_index is not None:
+                if find_index.shape[0]:
                     n_remove += 1
                 else:
                     to_keep[IDx] = True
@@ -824,3 +824,6 @@ class Msckf():
 
             prunedImuCamCovar = self.imu_cam_covar[:,:n]
             self.imu_cam_covar = prunedImuCamCovar
+
+    def getImuState(self):
+        return self.imu_state

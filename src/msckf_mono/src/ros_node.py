@@ -1,6 +1,7 @@
 from queue import Queue
 import rospy
 from sensor_msgs.msg import *
+from nav_msgs.msg import Odometry 
 import numpy as np
 from cv_bridge import CvBridge
 from msckf import Msckf
@@ -11,6 +12,7 @@ from module_msckf import Current_imu, Imu_state
 from scipy.spatial.transform import Rotation as R
 from std_msgs.msg import Header
 # import threading
+import time
 
 def quaternion_rotate_vector(quat, v):
     """Rotates a vector by a quaternion
@@ -49,22 +51,17 @@ def quaternion2euler(quaternion):
     euler = r.as_euler('xyz', degrees=True)
     return euler
  
-def thread_job():
-    rospy.spin()
+# def thread_job():
+#     rospy.spin()
 
 class Vio():
     def __init__(self):
         # self.img_qeuue = Queue(80)
-        self.imu_queue = Queue(250)
+        self.imu_queue = Queue(300)
         # add_thread = threading.Thread(target = thread_job)
         # add_thread.start()
-
-        self.imu_sub = rospy.Subscriber("/imu0", Imu, self.imu_Cb)
-        self.image_sub = rospy.Subscriber("/cam0/image_raw", Image,self.img_Cb)
-        self.track_image_pub = rospy.Publisher('/camera/tracked_image',Image,queue_size=2)
         self.prev_imu_time = 0
         
-        self.current_imu = Current_imu()
         self.imu_calibrate = False
         self.done_stand_still_time = 0
         self.cur_img_time = 0
@@ -99,6 +96,10 @@ class Vio():
         self.trackhandle = TrackHandle(self.K, self.dist_coeffs, self.distortion_model)
         self.setup_track_handler()
         
+        self.image_sub = rospy.Subscriber("/cam0/image_raw", Image,self.img_Cb)
+        self.imu_sub = rospy.Subscriber("/imu0", Imu, self.imu_Cb)
+        self.track_image_pub = rospy.Publisher('/camera/tracked_image',Image,queue_size=2)
+        self.odom_pub = rospy.Publisher("odom",Odometry,queue_size=100)
 
     def setup_track_handler(self):
         self.trackhandle.detector.set_grid_size(self.n_grid_rows,self.n_grid_cols)
@@ -112,18 +113,19 @@ class Vio():
             self.done_stand_still_time = cur_imu_time + self.stand_still_time 
             # print("first get imu time",self.prev_imu_time) 
         else:
-            self.current_imu.a[0] = msg.linear_acceleration.x
-            self.current_imu.a[1] = msg.linear_acceleration.y
-            self.current_imu.a[2] = msg.linear_acceleration.z
+            current_imu = Current_imu()
+            current_imu.a[0] = msg.linear_acceleration.x
+            current_imu.a[1] = msg.linear_acceleration.y
+            current_imu.a[2] = msg.linear_acceleration.z
 
-            self.current_imu.omega[0] = msg.angular_velocity.x
-            self.current_imu.omega[1] = msg.angular_velocity.y
-            self.current_imu.omega[2] = msg.angular_velocity.z
+            current_imu.omega[0] = msg.angular_velocity.x
+            current_imu.omega[1] = msg.angular_velocity.y
+            current_imu.omega[2] = msg.angular_velocity.z
 
-            self.current_imu.dt = cur_imu_time - self.prev_imu_time
-            self.current_imu.current_time = cur_imu_time
+            current_imu.dt = cur_imu_time - self.prev_imu_time
+            current_imu.current_time = cur_imu_time
             
-            self.imu_queue.put(self.current_imu)
+            self.imu_queue.put(current_imu)
             # print("imu_time:",self.current_imu.current_time)
             self.prev_imu_time = cur_imu_time
 
@@ -132,6 +134,7 @@ class Vio():
         # print("img_time:",self.cur_img_time)
         bridge = CvBridge()
         img = bridge.imgmsg_to_cv2(msg, "mono8")
+
         if not self.imu_calibrate:
             if self.imu_queue.qsize() % 100 == 0 and self.imu_queue.qsize() > 0:
                 print("Has", self.imu_queue.qsize(), "readings")
@@ -144,24 +147,30 @@ class Vio():
                 self.setup_msckf()
         else:
             imu_since_prev_img = self.find_frame_end()
-            print("imu_since_prev_img:",imu_since_prev_img.qsize())
+            # print("imu_since_prev_img:",len(imu_since_prev_img))
         
-            n = imu_since_prev_img.qsize()
-            for i in range(n):
-                imu = imu_since_prev_img.get()
+            n = len(imu_since_prev_img)
+            for imu in imu_since_prev_img:
                 self.msckf.propagate(imu)
                 gyro_measurement = np.dot(self.R_cam_imu.transpose(), (imu.omega-self.init_imu_state.b_g))
                 self.trackhandle.add_gyro_reading(gyro_measurement)
 
             self.trackhandle.set_current_image(img, self.cur_img_time)
+            start = time.time()
             cur_features, cur_ids = self.trackhandle.tracked_features()
             new_features, new_ids = self.trackhandle.get_new_features()
+            end = time.time()
+            print("get features time:",end-start)
+            start = time.time()
             self.msckf.augmentState(self.state_k,self.cur_img_time)
             self.msckf.update(cur_features, cur_ids)
             self.msckf.addFeatures(new_features,new_ids)
             self.msckf.marginalize()
+            end = time.time()
+            print("process time:",end-start)
             self.msckf.pruneEmptyStates()
             self.publish_extra(msg.header.stamp)
+            self.publish_core(msg.header.stamp)
 
     def publish_extra(self,publish_time):
         image_temp = Image()
@@ -171,31 +180,63 @@ class Vio():
         if imgdata.any():
             image_temp.height = imgdata.shape[0]
             image_temp.width = imgdata.shape[1]
-            image_temp.encoding = 'mono8'
+            image_temp.encoding = '8UC3'
             image_temp.data = np.array(imgdata).tostring()
             image_temp.header=header
             image_temp.step = imgdata.shape[1]
             self.track_image_pub.publish(image_temp)
+
+    def publish_core(self, publish_time):
+        imu_state = self.msckf.getImuState()
+        odom = Odometry()
+        odom.header.stamp = publish_time
+        odom.header.frame_id = "map"
+        odom.twist.twist.linear.x = imu_state.v_I_G[0]
+        odom.twist.twist.linear.y = imu_state.v_I_G[1]
+        odom.twist.twist.linear.z = imu_state.v_I_G[2]
+
+        odom.pose.pose.position.x = imu_state.p_I_G[0]
+        odom.pose.pose.position.y = imu_state.p_I_G[1]
+        odom.pose.pose.position.z = imu_state.p_I_G[2]
+
+        q_out = imu_state.q_IG.inverse
+        odom.pose.pose.orientation.w = q_out.w
+        odom.pose.pose.orientation.x = q_out.x
+        odom.pose.pose.orientation.y = q_out.y
+        odom.pose.pose.orientation.z = q_out.z
+
+        self.odom_pub.publish(odom)
 
     def setup_msckf(self):
         self.state_k = 0
         self.msckf.initialize(self.init_imu_state)
         
     def find_frame_end(self):
-        imu_since_prev_img = Queue()
+        # imu_since_prev_img = Queue(10)
+        # imu = Current_imu()
+        # n = self.imu_queue.qsize()
+        # # print("imu_queue:",n)
+        
+        # for i in range(n):
+        #     imu = self.imu_queue.get()
+        #     # print("cur_img_time:",self.cur_img_time)
+        #     if imu.current_time < self.cur_img_time:
+        #         # print("imu_time:",imu.current_time)
+        #         # print(i,":add a new one!")
+        #         imu_since_prev_img.put(imu)
+        #     else:
+        #         imu_since_prev_img.put(imu)
+        #         return imu_since_prev_img
+        imu_since_prev_img = []
         imu = Current_imu()
         n = self.imu_queue.qsize()
-        # print("imu_queue:",n)
-        
-        for i in range(n):
+        for i in range(min(n,10)):
             imu = self.imu_queue.get()
-            # print("cur_img_time:",self.cur_img_time)
-            if imu.current_time < self.cur_img_time+0.03:
-                # print("imu_time:",imu.current_time)
-                # print(i,":add a new one!")
-                imu_since_prev_img.put(imu)
+        
+            if imu.current_time < self.cur_img_time:
+                imu_since_prev_img.append(imu)
             else:
-                imu_since_prev_img.put(imu)
+                imu_since_prev_img.append(imu)
                 return imu_since_prev_img
         return imu_since_prev_img
 

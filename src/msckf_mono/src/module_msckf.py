@@ -70,14 +70,14 @@ class CornerTracker():
         self.termcrit_max_iters=50
         self.termcirt_epsilon=0.01
         self.lk_params = dict(winSize = (self.window_size,self.window_size),
-        maxLevel = self.max_level)
+        maxLevel = 4,minEigThreshold=0.00001,criteria = (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT,
+                          1, 30) )
     
     def configure(self,window_size,min_eigen_threshold,max_level,termcrit_max_iters,termcirt_epsilon):
         self.window_size = window_size
         self.min_eigen_threshold = min_eigen_threshold
         self.max_level = max_level
         
-
     def track_features(self,img_1, img_2, points1, points2, id1, id2):
         
         # points2,status,_ = cv2.calcOpticalFlowPyrLK(np.mat(img_1), np.mat(img_2), np.mat(points1[0]), np.mat(points2[0]),
@@ -94,7 +94,7 @@ class CornerTracker():
         w = img_1.shape[1]
         index = []
         dist_vector = points2 - points1
-        dist = np.sum(np.array(dist_vector)**2,axis=1)
+        dist = np.sqrt(np.sum(np.array(dist_vector)**2,axis=1))
         for i in range(status.shape[0]):
             if dist[i]>25.0 or status[i] == 0 or points2[i,0]<0 or points2[i,1]<0 or points2[i,0]>w or points2[i,1]>h:
                 if points2[i,0]<0 or points2[i,1]<0 or points2[i,0]>w or points2[i,1]>h:
@@ -108,7 +108,7 @@ class CornerTracker():
         else:
             points1 = np.array(points1).tolist()
             points2 = np.array(points2).tolist()
-            
+        print("tracked features:",len(points2))
         return points1,points2,id1,id2
 
 class CornerDetector():
@@ -121,8 +121,8 @@ class CornerDetector():
         self.grid_n_rows = 0
         self.grid_n_cols = 0
 
-    def sub2ind(self,sub):
-        return sub[1]/self.grid_width + sub[0]/self.grid_height*self.grid_n_cols
+    def sub2ind(self,row,col):#sub:sub[0]:row,sub[1]:col
+        return row/self.grid_height*self.grid_n_cols + col/self.grid_width 
 
     def get_n_rows(self):
         return self.grid_n_rows
@@ -136,7 +136,7 @@ class CornerDetector():
         self.occupancy_grid = np.zeros((self.grid_n_rows*self.grid_n_cols+self.grid_n_rows,1))
 
     def set_grid_position(self,f):
-        self.occupancy_grid[int(self.sub2ind(f))] = 1
+        self.occupancy_grid[int(self.sub2ind(f[0],f[1]))] = 1
 
     def shiTomasiScore(self,img,v,u):
         halfbox_size = 15
@@ -184,24 +184,24 @@ class CornerDetector():
     def detect_features(self,image):
         self.grid_height = (image.shape[0]/self.grid_n_rows)+1
         self.grid_width = (image.shape[1]/self.grid_n_cols)+1
-        fast = cv2.FastFeatureDetector_create()
+        fast = cv2.FastFeatureDetector_create(40,True,cv2.FAST_FEATURE_DETECTOR_TYPE_9_16)
         fast.setNonmaxSuppression(True)
         kp = fast.detect(image,None)
         score = 0
         feature = []
         scores = []
-        for i in range(len(kp)):
-            if kp[i].pt[0] < image.shape[0] and kp[i].pt[1] < image.shape[1]:
+        for i in range(len(kp)): #kp:[col,row]
+            if kp[i].pt[1] < image.shape[0] and kp[i].pt[0] < image.shape[1]:
                 pt = kp[i].pt
                 # print(pt)
-                k = self.sub2ind(pt)
+                k = self.sub2ind(pt[1],pt[0])
                 if not self.occupancy_grid[int(k)]:
-                    score = self.shiTomasiScore(image,kp[i].pt[0],kp[i].pt[1])
+                    score = self.shiTomasiScore(image,kp[i].pt[1],kp[i].pt[0])
                     scores.append(score)
                     if score > self.detection_threshold:
                         pt = kp[i].pt
-                        feature.append(np.array([pt[0],pt[1]]))
-        print(max(scores))
+                        feature.append(np.array([pt[1],pt[0]]))
+        # print(max(scores))
         self.occupancy_grid = np.zeros((self.grid_n_rows*self.grid_n_cols+self.grid_n_rows,1))
         return feature  
 
@@ -228,31 +228,33 @@ class TrackVisualizer():
         self.predicted_pts = []
 
     def draw_tracks(self,image):
-        if image.any() and self.predicted_pts:
-            first = True
+        if image.any():
+            image = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
             for id in self.feature_tracks:
                 color = (id/64%8*255/8, id/8%8*255/8, id%8*255/8)
-                predicted_pts = np.array(self.predicted_pts)
-                predicted_pts = predicted_pts[:,0]
-                predicted_pts.astype(int)
-                search = np.where(np.array(predicted_pts) == id)[0]
-                # print(type(search[0]))
-                if search:
-                    pt = (int(self.predicted_pts[search[0]][1]),int(self.predicted_pts[search[0]][2]))
-                    cv2.circle(image,pt,6,color,2)
+                if self.predicted_pts:
+                    predicted_pts = np.array(self.predicted_pts)
+                    predicted_pts = predicted_pts[:,0]
+                    predicted_pts.astype(int)
+                    search = np.where(np.array(predicted_pts) == id)[0]
+                    # print(type(search[0]))
+                    if search.shape[0]:
+                        pt = (int(self.predicted_pts[search[0]][1]),int(self.predicted_pts[search[0]][2]))
+                        cv2.circle(image,pt,6,color,2)
 
                 track = self.feature_tracks[id]
                 n = len(track)
+                first = True
                 for i in range(n):
                     it = (int(track[n-i-1][0]),int(track[n-i-1][1]))
                     if first:
                         first = False
-                        cv2.circle(image,it,4,color,2)
-                        prev = it
+                        cv2.circle(image,it,4,color,2)    
                     else:
-                        cv2.line(image,prev,it,color,1)
+                        cv2.line(image,prev,it,color,2)
+                    prev = it
 
-                return image
+            return image
         else:
             return np.array([])
 
@@ -274,7 +276,6 @@ class TrackVisualizer():
         
         to_remove = []
         for i in self.feature_tracks:
-            track = self.feature_tracks.get(i)
             if current_ids.count(i) == 0:
                 to_remove.append(i)
 
